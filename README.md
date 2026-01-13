@@ -2,8 +2,8 @@
 
 **The Foreman** is an internal RAG (Retrieval-Augmented Generation) application designed for **Hutton Construction**. It empowers project managers to query historical construction documents using natural language and assess risks for new projects based on past data.
 
-![The Foreman UI](https://github.com/Basil-Dunford/The-Foreman/assets/placeholder/ui-screenshot.png) 
-*(Note: Replace with actual screenshot URL if available)*
+![The Foreman UI](Images/ui-screenshot.png) 
+
 
 ## 🚀 Key Features
 
