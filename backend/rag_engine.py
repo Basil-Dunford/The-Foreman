@@ -26,8 +26,8 @@ if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY]):
 # Setup Gemini Models
 # "Flash" for fast, standard retrieval-based queries
 llm_flash = Gemini(model="models/gemini-3-flash-preview", api_key=GOOGLE_API_KEY)
-# "Pro" for complex reasoning and risk analysis (Using Gemini 2.0 Flash for stability/quota)
-llm_pro = Gemini(model="models/gemini-2.0-flash", api_key=GOOGLE_API_KEY)
+# "Pro" for complex reasoning and risk analysis (Using Gemini Flash Latest for stability)
+llm_pro = Gemini(model="models/gemini-flash-latest", api_key=GOOGLE_API_KEY)
 
 # Default embedding model (The actual "Retrieval" engine)
 gemini_embedding_model = GeminiEmbedding(model_name="models/text-embedding-004", api_key=GOOGLE_API_KEY)
