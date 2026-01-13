@@ -10,9 +10,14 @@ class QueryRequest(BaseModel):
     query: str
     top_k: Optional[int] = 3
 
+class SourceNode(BaseModel):
+    content: str
+    metadata: dict
+    score: Optional[float] = None
+
 class QueryResponse(BaseModel):
     answer: str
-    source_nodes: List[str]
+    source_nodes: List[SourceNode]
 
 class RiskScoutRequest(BaseModel):
     project_description: str

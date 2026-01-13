@@ -63,11 +63,20 @@ with tab1:
                     answer = data['answer']
                     sources = data['source_nodes']
                     
-                    full_response = f"{answer}\n\n**Sources:**\n"
-                    for s in sources:
-                        full_response += f"- `{s}`\n"
-                        
+                    full_response = f"{answer}\n\n"
                     message_placeholder.markdown(full_response)
+                    
+                    st.markdown("### 📚 Sources Used")
+                    for s in sources:
+                        meta = s.get('metadata', {})
+                        score = s.get('score', 0.0)
+                        file_name = meta.get('file_name', 'Unknown Document')
+                        page_label = meta.get('page_label', 'N/A')
+                        
+                        with st.expander(f"📄 {file_name} - Page {page_label} (Match: {score:.2f})"):
+                            st.markdown(f"**Content:**\n\n{s['content']}")
+                            st.caption(f"Path: {meta.get('file_path', 'N/A')}")
+                        
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                 else:
                     message_placeholder.error("Failed to get response from backend.")

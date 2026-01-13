@@ -18,7 +18,32 @@ def apply_custom_css():
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             letter-spacing: -0.2px;
         }
+
+        /* Link Styling */
+        a {
+            color: var(--primary-color) !important;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        a:hover {
+            color: var(--accent-color) !important;
+            text-decoration: underline;
+        }
         
+        /* Layout & Whitespace Control */
+        .stApp > header {
+            background-color: transparent !important;
+        }
+        
+        .main .block-container {
+            max-width: 1200px;
+            padding-top: 4rem;
+            padding-bottom: 4rem;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            margin: 0 auto;
+        }
+
         h1, h2, h3 {
             color: var(--primary-color) !important;
             font-weight: 700;

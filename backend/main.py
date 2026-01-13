@@ -43,7 +43,14 @@ async def query_index(request: QueryRequest):
         
         return QueryResponse(
             answer=str(response),
-            source_nodes=[node.node.get_content()[:200] + "..." for node in response.source_nodes]
+            source_nodes=[
+                {
+                    "content": node.node.get_content(),
+                    "metadata": node.node.metadata,
+                    "score": node.score
+                }
+                for node in response.source_nodes
+            ]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
