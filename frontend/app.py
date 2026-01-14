@@ -4,7 +4,7 @@ import time
 from ui_components import apply_custom_css, render_header, risk_card
 
 # Configuration
-API_URL = "http://localhost:8000"
+API_URL = "https://the-foreman.onrender.com"
 
 st.set_page_config(page_title="The Foreman", page_icon="🏗️", layout="wide")
 apply_custom_css()
