@@ -1,6 +1,8 @@
 import os
 import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import StreamingResponse
+import json
 from backend.models import IngestResponse, QueryRequest, QueryResponse, RiskScoutRequest, RiskScoutResponse
 from backend.ingestion import ingest_document
 from backend.rag_engine import get_index, llm_flash
@@ -43,17 +45,29 @@ async def ingest_file(file: UploadFile = File(...)):
             os.remove(file_location)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query")
 async def query_index(request: QueryRequest):
     try:
         index = get_index()
         # Use Flash for standard semantic search queries (faster, sufficient for retrieval synthesis)
-        query_engine = index.as_query_engine(similarity_top_k=request.top_k, llm=llm_flash)
-        response = query_engine.query(request.query)
+        query_engine = index.as_query_engine(
+            similarity_top_k=request.top_k, 
+            llm=llm_flash,
+            streaming=True
+        )
         
-        return QueryResponse(
-            answer=str(response),
-            source_nodes=[
+        def stream_generator():
+            # Initial status
+            yield json.dumps({"type": "status", "content": "Reading Project Docs..."}) + "\n"
+            
+            response = query_engine.query(request.query)
+            
+            # Stream the answer tokens
+            for text in response.response_gen:
+                yield json.dumps({"type": "answer", "content": text}) + "\n"
+            
+            # Stream the sources at the end
+            sources = [
                 {
                     "content": node.node.get_content(),
                     "metadata": node.node.metadata,
@@ -61,7 +75,9 @@ async def query_index(request: QueryRequest):
                 }
                 for node in response.source_nodes
             ]
-        )
+            yield json.dumps({"type": "source", "content": sources}) + "\n"
+
+        return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

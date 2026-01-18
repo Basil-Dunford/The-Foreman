@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import time
+import json
 from ui_components import apply_custom_css, render_header, risk_card
 
 # Configuration
@@ -52,34 +53,46 @@ with tab1:
 
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
-            message_placeholder.markdown("Thinking...")
+            full_response = ""
+            sources = []
             
             try:
                 payload = {"query": prompt, "top_k": 3}
-                response = requests.post(f"{API_URL}/query", json=payload)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    answer = data['answer']
-                    sources = data['source_nodes']
+                # Use st.status to show backend activity
+                with st.status("Reading Project Docs...", expanded=True) as status:
+                    response = requests.post(f"{API_URL}/query", json=payload, stream=True)
                     
-                    full_response = f"{answer}\n\n"
-                    message_placeholder.markdown(full_response)
-                    
-                    st.markdown("### 📚 Sources Used")
-                    for s in sources:
-                        meta = s.get('metadata', {})
-                        score = s.get('score', 0.0)
-                        file_name = meta.get('file_name', 'Unknown Document')
-                        page_label = meta.get('page_label', 'N/A')
+                    if response.status_code == 200:
+                        for line in response.iter_lines():
+                            if line:
+                                chunk = json.loads(line.decode('utf-8'))
+                                if chunk["type"] == "status":
+                                    status.update(label=chunk["content"])
+                                elif chunk["type"] == "answer":
+                                    full_response += chunk["content"]
+                                    message_placeholder.markdown(full_response + "▌")
+                                elif chunk["type"] == "source":
+                                    sources = chunk["content"]
                         
-                        with st.expander(f"📄 {file_name} - Page {page_label} (Match: {score:.2f})"):
-                            st.markdown(f"**Content:**\n\n{s['content']}")
-                            st.caption(f"Path: {meta.get('file_path', 'N/A')}")
+                        status.update(label="✅ Analysis Complete", state="complete", expanded=False)
+                        message_placeholder.markdown(full_response)
                         
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
-                else:
-                    message_placeholder.error("Failed to get response from backend.")
+                        if sources:
+                            st.markdown("### 📚 Sources Used")
+                            for s in sources:
+                                meta = s.get('metadata', {})
+                                score = s.get('score', 0.0)
+                                file_name = meta.get('file_name', 'Unknown Document')
+                                page_label = meta.get('page_label', 'N/A')
+                                
+                                with st.expander(f"📄 {file_name} - Page {page_label} (Match: {score:.2f})"):
+                                    st.markdown(f"**Content:**\n\n{s['content']}")
+                                    st.caption(f"Path: {meta.get('file_path', 'N/A')}")
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    else:
+                        status.update(label="❌ Error retrieving response", state="error")
+                        message_placeholder.error(f"Failed to get response from backend: {response.text}")
             except Exception as e:
                 message_placeholder.error(f"Backend unavailable: {str(e)}")
 
