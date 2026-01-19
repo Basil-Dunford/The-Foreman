@@ -28,9 +28,26 @@ with st.sidebar:
                         st.error(f"Error: {response.text}")
                 except Exception as e:
                     st.error(f"Connection Error: {e}")
+                    st.error(f"Connection Error: {e}")
                     st.warning("Make sure the Backend API is running!")
-
-# Main App Logic
+    
+    st.divider()
+    st.header("🔍 SEARCH FILTERS")
+    st.caption("Optional: Filter search results")
+    
+    selected_facility_types = st.multiselect(
+        "Facility Type",
+        ["Healthcare", "Industrial", "Commercial"],
+        default=[],
+        help="Leave empty to search all types"
+    )
+    
+    selected_years = st.multiselect(
+        "Project Year",
+        [2020, 2021, 2022, 2023, 2024, 2025],
+        default=[],
+        help="Leave empty to search all years"
+    )
 render_header()
 
 tab1, tab2 = st.tabs(["💬 Semantic Search", "🔍 Hutton Risk Scouter"])
@@ -57,7 +74,19 @@ with tab1:
             sources = []
             
             try:
-                payload = {"query": prompt, "top_k": 3}
+                # Construct payload with optional filters
+                filters = {}
+                if selected_facility_types:
+                    filters["facility_type"] = selected_facility_types
+                if selected_years:
+                    filters["project_year"] = selected_years
+                
+                payload = {
+                    "query": prompt, 
+                    "top_k": 3,
+                    "filters": filters if filters else None
+                }
+                
                 # Use st.status to show backend activity
                 with st.status("Reading Project Docs...", expanded=True) as status:
                     response = requests.post(f"{API_URL}/query", json=payload, stream=True)

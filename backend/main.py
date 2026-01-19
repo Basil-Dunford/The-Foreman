@@ -3,6 +3,7 @@ import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 import json
+from llama_index.core.vector_stores.types import MetadataFilters, ExactMatchFilter
 from backend.models import IngestResponse, QueryRequest, QueryResponse, RiskScoutRequest, RiskScoutResponse
 from backend.ingestion import ingest_document
 from backend.rag_engine import get_index, llm_flash
@@ -49,11 +50,25 @@ async def ingest_file(file: UploadFile = File(...)):
 async def query_index(request: QueryRequest):
     try:
         index = get_index()
+        
+        # Build Metadata Filters
+        filters = []
+        if request.filters:
+            if request.filters.facility_type:
+                for f_type in request.filters.facility_type:
+                    filters.append(ExactMatchFilter(key="facility_type", value=f_type))
+            if request.filters.project_year:
+                for year in request.filters.project_year:
+                    filters.append(ExactMatchFilter(key="project_year", value=year))
+        
+        metadata_filters = MetadataFilters(filters=filters) if filters else None
+        
         # Use Flash for standard semantic search queries (faster, sufficient for retrieval synthesis)
         query_engine = index.as_query_engine(
             similarity_top_k=request.top_k, 
             llm=llm_flash,
-            streaming=True
+            streaming=True,
+            filters=metadata_filters
         )
         
         def stream_generator():

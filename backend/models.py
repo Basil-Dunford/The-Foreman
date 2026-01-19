@@ -6,9 +6,14 @@ class IngestResponse(BaseModel):
     chunks_processed: int
     status: str
 
+class QueryFilters(BaseModel):
+    facility_type: Optional[List[str]] = None
+    project_year: Optional[List[int]] = None
+
 class QueryRequest(BaseModel):
     query: str
     top_k: Optional[int] = 3
+    filters: Optional[QueryFilters] = None
 
 class SourceNode(BaseModel):
     content: str
