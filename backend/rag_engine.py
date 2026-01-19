@@ -89,8 +89,10 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
             
         return VectorStoreQueryResult(nodes=nodes, similarities=similarities, ids=ids)
 
+# Initialize Supabase Client globally
+supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 def get_vector_store():
-    supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return CustomSupabaseVectorStore(client=supabase_client)
 
 def get_index():

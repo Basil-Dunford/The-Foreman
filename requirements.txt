@@ -11,4 +11,3 @@ python-dotenv
 google-generativeai
 pydantic
 gptcache
-onnxruntime

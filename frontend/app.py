@@ -6,7 +6,8 @@ import json
 from ui_components import apply_custom_css, render_header, risk_card
 
 # Configuration
-API_URL = os.getenv("BACKEND_URL", "https://the-foreman.onrender.com")
+# Default to Localhost for development safety. Set BACKEND_URL in env for prod.
+API_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="The Foreman", page_icon="🏗️", layout="wide")
 apply_custom_css()

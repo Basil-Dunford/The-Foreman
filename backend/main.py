@@ -6,7 +6,8 @@ import json
 from llama_index.core.vector_stores.types import MetadataFilters, ExactMatchFilter
 from backend.models import IngestResponse, QueryRequest, QueryResponse, RiskScoutRequest, RiskScoutResponse
 from backend.ingestion import ingest_document
-from backend.rag_engine import get_index, llm_flash
+from llama_index.core import QueryBundle
+from backend.rag_engine import get_index, llm_flash, gemini_embedding_model
 from backend.risk_scouter import analyze_risk
 from backend.cache import setup_cache, get_from_cache, save_to_cache
 import asyncio
@@ -56,17 +57,16 @@ async def ingest_file(file: UploadFile = File(...)):
 @app.post("/query")
 async def query_index(request: QueryRequest):
     try:
+        # Pre-compute embedding to avoid double generation (Cache + RAG)
+        query_embedding = gemini_embedding_model.get_query_embedding(request.query)
+
         # 1. Check Cache
-        cached_result = get_from_cache(request.query)
+        cached_result = get_from_cache(request.query, embedding=query_embedding)
         if cached_result:
             print("CACHE HIT")
             # If cached, we need to yield it in the expected format
             def stream_cached():
                 yield json.dumps({"type": "status", "content": "Found in Cache..."}) + "\n"
-                # We stored the whole response text, so we can yield it
-                # Logic depends on what we stored. Let's assume we stored a JSON or just text.
-                # If we stored just text answer, we might miss sources.
-                # Ideally, we should cache a JSON string containing answer + sources.
                 
                 try:
                     data = json.loads(cached_result)
@@ -96,7 +96,7 @@ async def query_index(request: QueryRequest):
         
         metadata_filters = MetadataFilters(filters=filters) if filters else None
         
-        # Use Flash for standard semantic search queries (faster, sufficient for retrieval synthesis)
+        # Use Flash for standard semantic search queries
         query_engine = index.as_query_engine(
             similarity_top_k=request.top_k, 
             llm=llm_flash,
@@ -108,7 +108,9 @@ async def query_index(request: QueryRequest):
             # Initial status
             yield json.dumps({"type": "status", "content": "Reading Project Docs..."}) + "\n"
             
-            response = query_engine.query(request.query)
+            # Use QueryBundle with pre-computed embedding
+            bundle = QueryBundle(query_str=request.query, embedding=query_embedding)
+            response = query_engine.query(bundle)
             
             full_answer_text = ""
             
@@ -128,16 +130,16 @@ async def query_index(request: QueryRequest):
             ]
             yield json.dumps({"type": "source", "content": sources}) + "\n"
             
-            # Save to Cache
-            # We cache a JSON object with answer and sources to reconstruct the full response
+            # Save to Cache using pre-computed embedding
             cache_payload = json.dumps({
                 "answer": full_answer_text,
                 "sources": sources
             })
-            save_to_cache(request.query, cache_payload)
+            save_to_cache(request.query, cache_payload, embedding=query_embedding)
 
         return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
     except Exception as e:
+        print(f"Query Error: {e}") # Add logging
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/risk-scout", response_model=RiskScoutResponse)

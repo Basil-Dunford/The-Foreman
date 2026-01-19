@@ -147,27 +147,31 @@ from gptcache.embedding import Onnx
 from gptcache.manager import get_data_manager, CacheBase, VectorBase
 from gptcache.similarity_evaluation.distance import SearchDistanceEvaluation
 
+from backend.rag_engine import gemini_embedding_model
+
 def setup_cache():
     try:
-        onnx = Onnx()
-        # Initialize with defaults (usually map based and simple vector store)
-        # Verify valid args: 'data_path', 'vector_path' might be valid for some factory methods 
-        # but here we use get_data_manager directly. 
-        # Let's try default (in-memory).
+        # Use Gemini Embedding Model (already initialized with API key)
+        # This avoids downloading heavy local models (Onnx)
+        
+        def gemini_embed(text: str):
+             # Adapter to return list directly
+             return gemini_embedding_model.get_text_embedding(text)
+        
         data_manager = get_data_manager()
         
         cache.init(
-            embedding_func=onnx.to_embeddings,
+            embedding_func=gemini_embed,
             data_manager=data_manager,
             similarity_evaluation=SearchDistanceEvaluation(),
         )
-        print("GPTCache configured with ONNX embeddings.")
+        print("GPTCache configured with Gemini embeddings.")
         return True
     except Exception as e:
         print(f"Failed to init GPTCache: {e}")
         return False
 
-def get_from_cache(query_str: str):
+def get_from_cache(query_str: str, embedding: list = None):
     try:
         # This uses the underlying configured mechanisms
         
@@ -177,9 +181,12 @@ def get_from_cache(query_str: str):
         embedding_func = cache.embedding_func
         data_manager = cache.data_manager
         
-        query_embedding = embedding_func(query_str)
-        if hasattr(query_embedding, "tolist"):
-             query_embedding = query_embedding.tolist()
+        if embedding is not None:
+            query_embedding = embedding
+        else:
+            query_embedding = embedding_func(query_str)
+            if hasattr(query_embedding, "tolist"):
+                 query_embedding = query_embedding.tolist()
         
         # Check if batch
         if isinstance(query_embedding, list) and len(query_embedding) > 0 and isinstance(query_embedding[0], list):
@@ -202,7 +209,7 @@ def get_from_cache(query_str: str):
     
     return None
 
-def save_to_cache(query_str: str, response_str: str):
+def save_to_cache(query_str: str, response_str: str, embedding: list = None):
     try:
         if not cache.has_init:
             return
@@ -210,9 +217,12 @@ def save_to_cache(query_str: str, response_str: str):
         embedding_func = cache.embedding_func
         data_manager = cache.data_manager
         
-        query_embedding = embedding_func(query_str)
-        if hasattr(query_embedding, "tolist"):
-             query_embedding = query_embedding.tolist()
+        if embedding is not None:
+             query_embedding = embedding
+        else:
+            query_embedding = embedding_func(query_str)
+            if hasattr(query_embedding, "tolist"):
+                query_embedding = query_embedding.tolist()
         
         # Check if batch (list of lists) and take first
         if isinstance(query_embedding, list) and len(query_embedding) > 0 and isinstance(query_embedding[0], list):
