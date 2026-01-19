@@ -94,3 +94,22 @@ streamlit run frontend/app.py
 
 ## 📄 License
 Internal Tool - Hutton Construction.
+
+## ☁️ Deployment on Render
+
+### 1. Backend Service (Web Service)
+*   **Runtime**: Python
+*   **Build Command**: `pip install -r requirements.txt`
+*   **Start Command**: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+*   **Env Vars**:
+    *   `GOOGLE_API_KEY`: *(Your key)*
+    *   `SUPABASE_URL`: *(Your url)*
+    *   `SUPABASE_KEY`: *(Your key)*
+    *   `ALLOWED_ORIGINS`: `https://your-frontend-url.onrender.com` (Restrict this after deploying frontend)
+
+### 2. Frontend Service (Web Service)
+*   **Runtime**: Python
+*   **Build Command**: `pip install -r requirements.txt`
+*   **Start Command**: `streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0`
+*   **Env Vars**:
+    *   `BACKEND_URL`: `https://your-backend-url.onrender.com`
