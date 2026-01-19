@@ -11,11 +11,11 @@ API_URL = os.getenv("BACKEND_URL", "https://the-foreman.onrender.com")
 st.set_page_config(page_title="The Foreman", page_icon="🏗️", layout="wide")
 apply_custom_css()
 
-@st.cache_resource
-def get_api_session():
-    return requests.Session()
+# Initialize API Session per user session
+if "api_session" not in st.session_state:
+    st.session_state.api_session = requests.Session()
 
-session = get_api_session()
+session = st.session_state.api_session
 
 # Sidebar: Document Ingestion
 with st.sidebar:
