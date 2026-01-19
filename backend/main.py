@@ -8,6 +8,11 @@ from backend.models import IngestResponse, QueryRequest, QueryResponse, RiskScou
 from backend.ingestion import ingest_document
 from backend.rag_engine import get_index, llm_flash
 from backend.risk_scouter import analyze_risk
+from backend.cache import setup_cache, get_from_cache, save_to_cache
+import asyncio
+
+# Initialize Cache on Startup
+setup_cache()
 
 app = FastAPI(title="The Foreman API")
 
@@ -51,6 +56,32 @@ async def ingest_file(file: UploadFile = File(...)):
 @app.post("/query")
 async def query_index(request: QueryRequest):
     try:
+        # 1. Check Cache
+        cached_result = get_from_cache(request.query)
+        if cached_result:
+            print("CACHE HIT")
+            # If cached, we need to yield it in the expected format
+            def stream_cached():
+                yield json.dumps({"type": "status", "content": "Found in Cache..."}) + "\n"
+                # We stored the whole response text, so we can yield it
+                # Logic depends on what we stored. Let's assume we stored a JSON or just text.
+                # If we stored just text answer, we might miss sources.
+                # Ideally, we should cache a JSON string containing answer + sources.
+                
+                try:
+                    data = json.loads(cached_result)
+                    answer = data.get("answer", "")
+                    sources = data.get("sources", [])
+                except:
+                    # Fallback if simple string
+                    answer = cached_result
+                    sources = []
+
+                yield json.dumps({"type": "answer", "content": answer}) + "\n"
+                yield json.dumps({"type": "source", "content": sources}) + "\n"
+
+            return StreamingResponse(stream_cached(), media_type="application/x-ndjson")
+
         index = get_index()
         
         # Build Metadata Filters
@@ -73,14 +104,17 @@ async def query_index(request: QueryRequest):
             filters=metadata_filters
         )
         
-        def stream_generator():
+        async def stream_generator():
             # Initial status
             yield json.dumps({"type": "status", "content": "Reading Project Docs..."}) + "\n"
             
             response = query_engine.query(request.query)
             
+            full_answer_text = ""
+            
             # Stream the answer tokens
             for text in response.response_gen:
+                full_answer_text += text
                 yield json.dumps({"type": "answer", "content": text}) + "\n"
             
             # Stream the sources at the end
@@ -93,6 +127,14 @@ async def query_index(request: QueryRequest):
                 for node in response.source_nodes
             ]
             yield json.dumps({"type": "source", "content": sources}) + "\n"
+            
+            # Save to Cache
+            # We cache a JSON object with answer and sources to reconstruct the full response
+            cache_payload = json.dumps({
+                "answer": full_answer_text,
+                "sources": sources
+            })
+            save_to_cache(request.query, cache_payload)
 
         return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
     except Exception as e:

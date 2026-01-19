@@ -11,6 +11,12 @@ API_URL = os.getenv("BACKEND_URL", "https://the-foreman.onrender.com")
 st.set_page_config(page_title="The Foreman", page_icon="🏗️", layout="wide")
 apply_custom_css()
 
+@st.cache_resource
+def get_api_session():
+    return requests.Session()
+
+session = get_api_session()
+
 # Sidebar: Document Ingestion
 with st.sidebar:
     st.header("📋 PROJECT DOCUMENTS")
@@ -21,7 +27,7 @@ with st.sidebar:
             with st.spinner("Chunking & Embedding..."):
                 try:
                     files = {'file': (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                    response = requests.post(f"{API_URL}/ingest", files=files)
+                    response = session.post(f"{API_URL}/ingest", files=files)
                     if response.status_code == 200:
                         data = response.json()
                         st.success(f"Ingested {data['chunks_processed']} chunks from {data['filename']}")
@@ -90,7 +96,7 @@ with tab1:
                 
                 # Use st.status to show backend activity
                 with st.status("Reading Project Docs...", expanded=True) as status:
-                    response = requests.post(f"{API_URL}/query", json=payload, stream=True)
+                    response = session.post(f"{API_URL}/query", json=payload, stream=True)
                     
                     if response.status_code == 200:
                         for line in response.iter_lines():
@@ -137,7 +143,7 @@ with tab2:
         with st.spinner("Scouting risks..."):
             try:
                 payload = {"project_description": project_desc}
-                response = requests.post(f"{API_URL}/risk-scout", json=payload)
+                response = session.post(f"{API_URL}/risk-scout", json=payload)
                 
                 if response.status_code == 200:
                     data = response.json()
