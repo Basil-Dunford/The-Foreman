@@ -4,7 +4,7 @@ import json
 API_URL = "http://localhost:8000"
 
 def test_streaming_query():
-    payload = {"query": "How did we handle moisture in 2022?", "top_k": 3}
+    payload = {"query": "What issues have we run into with operating forklifts?", "top_k": 3}
     try:
         print(f"Sending request to {API_URL}/query...")
         response = requests.post(f"{API_URL}/query", json=payload, stream=True)

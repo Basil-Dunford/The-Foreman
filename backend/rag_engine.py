@@ -84,11 +84,33 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
             # We assume a 'plain' or 'phrase' type search depending on needs. 
             # 'websearch' is often best for natural language queries.
             import re
+            
+            STOP_WORDS = {
+                "what", "where", "when", "how", "who", "why", "which",
+                "the", "a", "an", "and", "or", "but", "if", "because",
+                "as", "at", "by", "for", "from", "in", "into", "of", "off", "on", "onto",
+                "to", "with", "within", "without", "about",
+                "is", "are", "was", "were", "be", "been", "being",
+                "have", "has", "had", "having",
+                "do", "does", "did", "doing",
+                "can", "could", "should", "would", "will", "may", "might", "must",
+                "we", "you", "they", "it", "this", "that", "these", "those",
+                "i", "me", "my", "mine", "myself", "us", "our", "ours", "ourselves",
+                "run", "running", "ran" 
+            }
+            
             # Sanitize query for basic tsquery (AND logic, remove punctuation)
-            clean_query = re.sub(r'[^\w\s]', '', query.query_str)
-            ts_query = " & ".join(clean_query.split())
+            clean_query = re.sub(r'[^\w\s]', '', query.query_str.lower())
+            words = clean_query.split()
+            filtered_words = [w for w in words if w not in STOP_WORDS]
+            
+            # Fallback: if everything is filtered (e.g. "To be or not to be"), use original words
+            if not filtered_words:
+                filtered_words = words
+                
+            ts_query = " & ".join(filtered_words)
             if not ts_query:
-                # Fallback if query becomes empty (e.g. only symbols)
+                # Fallback if query becomes empty (e.g. matches nothing even in original)
                 ts_query = query.query_str
                 
             return self.client.table("documents").select("*").limit(query.similarity_top_k or 5).text_search("content", ts_query).execute()
@@ -130,7 +152,11 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
                 # but for search content it might be okay. 
                 # The record usually has it if we selected "*".
                 if "embedding" in record and record["embedding"]:
-                    node.embedding = record["embedding"]
+                    emb = record["embedding"]
+                    if isinstance(emb, str):
+                        import json
+                        emb = json.loads(emb)
+                    node.embedding = emb
                     
                 candidates[doc_id] = {"node": node, "vec_rank": 100, "kw_rank": rank + 1}
              else:
@@ -139,10 +165,15 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
         # 4. Compute RRF Score
         # Score = 1 / (k + rank)
         k = 60
+        # Normalization factor: Max possible score is being rank 1 in both lists
+        max_possible_score = (1 / (k + 1)) * 2
+        
         final_results = []
         for doc_id, data in candidates.items():
             rrf_score = (1 / (k + data["vec_rank"])) + (1 / (k + data["kw_rank"]))
-            final_results.append((data["node"], rrf_score))
+            # Normalize to 0-1 range
+            normalized_score = rrf_score / max_possible_score
+            final_results.append((data["node"], normalized_score))
             
         # 5. Sort by RRF Score Descending
         final_results.sort(key=lambda x: x[1], reverse=True)
@@ -156,7 +187,7 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
         top_k = query.similarity_top_k or 5
         for node, score in final_results[:top_k]:
             nodes.append(node)
-            similarities.append(score) # This is now RRF score, not cosine similarity
+            similarities.append(score) # This is now Normalized RRF score (0-1)
             ids.append(node.node_id)
             
         return VectorStoreQueryResult(nodes=nodes, similarities=similarities, ids=ids)
