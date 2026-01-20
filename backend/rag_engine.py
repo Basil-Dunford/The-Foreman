@@ -163,14 +163,20 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
                 candidates[doc_id]["kw_rank"] = rank + 1
         
         # 4. Compute RRF Score
-        # Score = 1 / (k + rank)
+        # Score = (1 / (k + vec_rank)) + (weight * (1 / (k + kw_rank)))
         k = 60
-        # Normalization factor: Max possible score is being rank 1 in both lists
-        max_possible_score = (1 / (k + 1)) * 2
+        kw_weight = 2.0 # Boost keyword matches by 2x
+        
+        # Normalization factor: Max possible score is being rank 1 in both lists (with weight)
+        max_possible_score = (1 / (k + 1)) + (kw_weight * (1 / (k + 1)))
         
         final_results = []
         for doc_id, data in candidates.items():
-            rrf_score = (1 / (k + data["vec_rank"])) + (1 / (k + data["kw_rank"]))
+            vec_score = 1 / (k + data["vec_rank"])
+            kw_score = kw_weight * (1 / (k + data["kw_rank"]))
+            
+            rrf_score = vec_score + kw_score
+            
             # Normalize to 0-1 range
             normalized_score = rrf_score / max_possible_score
             final_results.append((data["node"], normalized_score))
