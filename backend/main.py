@@ -105,37 +105,50 @@ async def query_index(request: QueryRequest):
         )
         
         async def stream_generator():
-            # Initial status
-            yield json.dumps({"type": "status", "content": "Reading Project Docs..."}) + "\n"
-            
-            # Use QueryBundle with pre-computed embedding
-            bundle = QueryBundle(query_str=request.query, embedding=query_embedding)
-            response = query_engine.query(bundle)
-            
-            full_answer_text = ""
-            
-            # Stream the answer tokens
-            for text in response.response_gen:
-                full_answer_text += text
-                yield json.dumps({"type": "answer", "content": text}) + "\n"
-            
-            # Stream the sources at the end
-            sources = [
-                {
-                    "content": node.node.get_content(),
-                    "metadata": node.node.metadata,
-                    "score": node.score
-                }
-                for node in response.source_nodes
-            ]
-            yield json.dumps({"type": "source", "content": sources}) + "\n"
-            
-            # Save to Cache using pre-computed embedding
-            cache_payload = json.dumps({
-                "answer": full_answer_text,
-                "sources": sources
-            })
-            save_to_cache(request.query, cache_payload, embedding=query_embedding)
+            try:
+                # Initial status
+                yield json.dumps({"type": "status", "content": "Reading Project Docs..."}) + "\n"
+                
+                # Use QueryBundle with pre-computed embedding
+                # Ensure query_embedding is a list of floats
+                if isinstance(query_embedding, (list, tuple)):
+                     pass
+                else:
+                     # Fallback check
+                     print(f"Warning: query_embedding type is {type(query_embedding)}")
+
+                bundle = QueryBundle(query_str=request.query, embedding=query_embedding)
+                response = query_engine.query(bundle)
+                
+                full_answer_text = ""
+                
+                # Stream the answer tokens
+                for text in response.response_gen:
+                    full_answer_text += text
+                    yield json.dumps({"type": "answer", "content": text}) + "\n"
+                
+                # Stream the sources at the end
+                sources = [
+                    {
+                        "content": node.node.get_content(),
+                        "metadata": node.node.metadata,
+                        "score": node.score
+                    }
+                    for node in response.source_nodes
+                ]
+                yield json.dumps({"type": "source", "content": sources}) + "\n"
+                
+                # Save to Cache using pre-computed embedding
+                cache_payload = json.dumps({
+                    "answer": full_answer_text,
+                    "sources": sources
+                })
+                save_to_cache(request.query, cache_payload, embedding=query_embedding)
+            except Exception as e:
+                import traceback
+                error_msg = f"Error during streaming: {str(e)}\n{traceback.format_exc()}"
+                print(error_msg)
+                yield json.dumps({"type": "answer", "content": f"\n**System Error:** {str(e)}"}) + "\n"
 
         return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
     except Exception as e:
