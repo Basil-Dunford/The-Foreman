@@ -149,20 +149,35 @@ with tab2:
                 if response.status_code == 200:
                     data = response.json()
                     
-                    col1, col2 = st.columns(2)
+                    st.divider() # Visual separation to stabilize layout
+                    
+                    col1, col2 = st.columns([2, 1]) # Adjusted ratio for better readability
+                    
                     with col1:
-                        st.subheader("Analysis")
+                        st.subheader("📝 Analysis")
                         st.write(data['analysis'])
                     
                     with col2:
-                        st.subheader("Relevant Past Projects")
-                        for proj in data['relevant_past_projects']:
-                            st.code(proj)
+                        st.subheader("🏗️ Relevant Past Projects")
+                        if data.get('relevant_past_projects'):
+                            for proj in data['relevant_past_projects']:
+                                st.code(proj, language="text")
+                        else:
+                            st.caption("No specific past projects linked.")
                             
-                        st.subheader("Potential Risks")
-                        # If structure allows, loop. For now, analysis text likely covers it.
-                        risk_card("Check specific details in Analysis.")
+                        st.divider()
+                        
+                        st.subheader("🚩 Potential Risks")
+                        risk_flags = data.get('risk_flags', [])
+                        
+                        if risk_flags:
+                            for flag in risk_flags:
+                                risk_card(flag)
+                        else:
+                            # Fallback if list is empty (shouldn't be with recent fix)
+                            risk_card("Review Analysis for details.")
+                            
                 else:
-                    st.error("Analysis failed.")
+                    st.error("Analysis failed. Server returned an error.")
             except Exception as e:
                 st.error(f"Backend error: {e}")
