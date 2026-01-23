@@ -115,16 +115,52 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
                 
             return self.client.table("documents").select("*").limit(query.similarity_top_k or 5).text_search("content", ts_query).execute()
 
+        def run_phrase_search():
+             # "Bigram" Phrase Search: (word1 <-> word2) | (word2 <-> word3)
+             # This finds noun phrases like "Cold Storage" or "Safety Log" even in long queries.
+             import re
+             STOP_WORDS = {
+                "what", "where", "when", "how", "who", "why", "which",
+                "the", "a", "an", "and", "or", "but", "if", "because",
+                "as", "at", "by", "for", "from", "in", "into", "of", "off", "on", "onto",
+                "to", "with", "within", "without", "about",
+                "is", "are", "was", "were", "be", "been", "being",
+                "have", "has", "had", "having",
+                "do", "does", "did", "doing",
+                "can", "could", "should", "would", "will", "may", "might", "must",
+                "we", "you", "they", "it", "this", "that", "these", "those",
+                "i", "me", "my", "mine", "myself", "us", "our", "ours", "ourselves",
+                "run", "running", "ran" 
+            }
+             
+             clean_query = re.sub(r'[^\w\s]', '', query.query_str.lower())
+             words = [w for w in clean_query.split() if w not in STOP_WORDS]
+             
+             if len(words) < 2:
+                 # No pairs possible
+                 return None
+                 
+             bigrams = []
+             for i in range(len(words) - 1):
+                 # Bidirectional: (A <-> B) OR (B <-> A)
+                 bigrams.append(f"({words[i]} <-> {words[i+1]})")
+                 bigrams.append(f"({words[i+1]} <-> {words[i]})")
+             
+             ts_query = " | ".join(bigrams)
+             return self.client.table("documents").select("*").limit(query.similarity_top_k or 5).text_search("content", ts_query).execute()
+
         # 2. Execute in Parallel
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future_vec = executor.submit(run_vector_search)
             future_kw = executor.submit(run_keyword_search)
+            future_phrase = executor.submit(run_phrase_search)
             
             vec_response = future_vec.result()
             kw_response = future_kw.result()
+            phrase_response = future_phrase.result()
 
         # 3. Process Results for RRF
-        # We need a unified dict to hold: {doc_id: {'node': node, 'vec_rank': X, 'kw_rank': Y}}
+        # We need a unified dict to hold: {doc_id: {'node': node, 'vec_rank': X, 'kw_rank': Y, 'phrase_rank': Z}}
         
         candidates = {}
 
@@ -135,7 +171,7 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
                 node = metadata_dict_to_node(record["metadata"])
                 node.set_content(record["content"])
                 node.node_id = doc_id
-                candidates[doc_id] = {"node": node, "vec_rank": rank + 1, "kw_rank": 100} # 100 = default low rank
+                candidates[doc_id] = {"node": node, "vec_rank": rank + 1, "kw_rank": 100, "phrase_rank": 100} # 100 = default low rank
             else:
                  candidates[doc_id]["vec_rank"] = rank + 1
 
@@ -158,24 +194,45 @@ class CustomSupabaseVectorStore(BasePydanticVectorStore):
                         emb = json.loads(emb)
                     node.embedding = emb
                     
-                candidates[doc_id] = {"node": node, "vec_rank": 100, "kw_rank": rank + 1}
+                candidates[doc_id] = {"node": node, "vec_rank": 100, "kw_rank": rank + 1, "phrase_rank": 100}
              else:
                 candidates[doc_id]["kw_rank"] = rank + 1
         
+        # Process Phrase Results
+        if phrase_response:
+            for rank, record in enumerate(phrase_response.data):
+                doc_id = record["id"]
+                if doc_id not in candidates:
+                    node = metadata_dict_to_node(record["metadata"])
+                    node.set_content(record["content"])
+                    node.node_id = doc_id
+                    if "embedding" in record and record["embedding"]:
+                        emb = record["embedding"]
+                        if isinstance(emb, str):
+                            import json
+                            emb = json.loads(emb)
+                        node.embedding = emb
+                    candidates[doc_id] = {"node": node, "vec_rank": 100, "kw_rank": 100, "phrase_rank": rank + 1}
+                else:
+                    candidates[doc_id]["phrase_rank"] = rank + 1
+
         # 4. Compute RRF Score
-        # Score = (1 / (k + vec_rank)) + (weight * (1 / (k + kw_rank)))
-        k = 60
-        kw_weight = 2.0 # Boost keyword matches by 2x
+        # Score = (1 / (k + vec_rank)) + (weight * (1 / (k + kw_rank))) + (phrase_weight * (1 / (k + phrase_rank)))
+        k = 20
+        kw_weight = 1.5   # 0.071 max vs 0.047 max (Vector) -> Keywords win top spots
+        phrase_weight = 2.0 # 0.095 max -> Phrases dominate top spots
+        # Logic Check: Top 5 Vector (1/25 = 0.04) > Top 20 Keyword (1.5 * 1/40 = 0.0375) -> PASS
         
         # Normalization factor: Max possible score is being rank 1 in both lists (with weight)
-        max_possible_score = (1 / (k + 1)) + (kw_weight * (1 / (k + 1)))
+        max_possible_score = (1 / (k + 1)) + (kw_weight * (1 / (k + 1))) + (phrase_weight * (1 / (k + 1)))
         
         final_results = []
         for doc_id, data in candidates.items():
             vec_score = 1 / (k + data["vec_rank"])
             kw_score = kw_weight * (1 / (k + data["kw_rank"]))
+            phrase_score = phrase_weight * (1 / (k + data["phrase_rank"]))
             
-            rrf_score = vec_score + kw_score
+            rrf_score = vec_score + kw_score + phrase_score
             
             # Normalize to 0-1 range
             normalized_score = rrf_score / max_possible_score
